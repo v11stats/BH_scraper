@@ -312,6 +312,28 @@ def process_aa_admit_discharge_timeseries(directory):
     )
 
 
+def fix_incorrect_census_and_a_a_cols(df: pd.DataFrame):
+    """Fix incorrect column names in the A&A census data.
+
+    Args:
+        df (pd.DataFrame): The dataframe to fix.
+
+    Returns:
+        pd.DataFrame: The fixed dataframe.
+    """
+    # Fix the column names
+    df.columns = [
+        col.replace(".315 A&A Census Census", "A&A Census").replace(
+            "nan", ".315 Census"
+        )
+        for col in df.columns
+    ]
+    # This error also results in an incorrect total.
+    df.loc[df["County"] == "Total", "A&A Census"] = 379
+    df.loc[df["County"] == "Total", ".315 Census"] = 0
+    return df
+
+
 def process_a_a_census_timeseries(directory: str):
     """Process the A&A census timeseries data.
 
@@ -362,6 +384,16 @@ def process_a_a_census_timeseries(directory: str):
                 col if col != "from Prev. Week" else "Change from Prev. Week"
                 for col in df.columns
             ]
+            df.columns = [
+                col if col != "State Pop." else "% of State Pop." for col in df.columns
+            ]
+            df.columns = [
+                col if col != "vs. Pop. Dif." else "Census vs. Pop. Dif."
+                for col in df.columns
+            ]
+            # If this is our one problem file, fix it
+            if file_ == "Aid-and-assist-census-by-county-2024-08-19.pdf":
+                df = fix_incorrect_census_and_a_a_cols(df)
             # We have specific columns, so make sure they're all there
             assert set(df.columns).issuperset(
                 {
