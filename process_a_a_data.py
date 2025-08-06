@@ -594,6 +594,7 @@ def process_restoration_limit_data(directory: str):
                 # The column that must be split may be one of 2 options. Check if either is already present
                 if "Community Restoration" not in df.columns:
                     # If not, then we need to split the column
+                    group_note = 1
                     i = 0
                     for col in df.columns:
                         if "Charges Community" in col:
@@ -607,6 +608,7 @@ def process_restoration_limit_data(directory: str):
                     ] = df.iloc[:, i].str.split(expand=True)
                     df = df.drop(columns=df.columns[i])
                 else:
+                    group_note = 2
                     i = 0
                     for col in df.columns:
                         if "Charges Discharged" in col:
@@ -631,10 +633,8 @@ def process_restoration_limit_data(directory: str):
                     "Reached Restoration Limit": "End of Statuary Jurisdiction",
                     "Admitted since 9/1/2022": "At OSH as of 9/1/2022",
                 }
-                # The following column is a repeat, so we can drop it
                 # Replace the column names
                 df = df.rename(columns=column_replacements)
-                df.drop(columns=["End of Statuary Jurisdiction"], inplace=True)
 
                 if "Other" not in df.columns:
                     df["Other"] = np.nan  # this isn't in earlier files
@@ -653,6 +653,7 @@ def process_restoration_limit_data(directory: str):
                         "Discharged After Meeting 30-Day RL Notice Period",
                         "Community Restoration",
                         "Charges Dismissed or Released",
+                        "End of Statuary Jurisdiction",
                     }
                 ), f"Missing expected columns in {file_}"
                 df["Date"] = date_match
@@ -670,6 +671,7 @@ def process_restoration_limit_data(directory: str):
                         "Found Never Able",
                         "Community Restoration",
                         "Charges Dismissed or Released",
+                        "End of Statuary Jurisdiction",
                         "Other",
                         "Total Discharged",
                         "Date",
@@ -695,7 +697,16 @@ def process_restoration_limit_data(directory: str):
                         "Discharged Prior to Meeting 30-Day RL Notice Period",
                         "Discharged After Meeting 30-Day RL Notice Period",
                     ]
-                    group2 = ["Community Restoration", "Charges Dismissed or Released"]
+                    if group_note == 1:
+                        group2 = [
+                            "Community Restoration",
+                            "Charges Dismissed or Released",
+                        ]
+                    else:
+                        group2 = [
+                            "Charges Dismissed or Released",
+                            "End of Statuary Jurisdiction",
+                        ]
 
                     if any(item in bad_cols for item in group1 + group2):
                         # Check which group is broken
@@ -724,6 +735,8 @@ def process_restoration_limit_data(directory: str):
                         raise AssertionError(
                             f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
                         )
+                # This column is a repeat, so remove it
+                df.drop(columns=["End of Statuary Jurisdiction"], inplace=True)
                 # Turn the data into long format
                 df = pd.melt(
                     df,
@@ -831,6 +844,6 @@ process_aa_admit_discharge_timeseries(
 process_a_a_census_timeseries(
     directory=os.path.join(os.getcwd(), "../OSH AandA Census")
 )
-update_restoration_limit_data(
+process_restoration_limit_data(
     directory=os.path.join(os.getcwd(), "../OSH_Restoration_Limit_data")
 )
