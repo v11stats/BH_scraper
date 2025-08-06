@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 
 
-def update_aid_and_assist_data(directory):
+def update_aid_and_assist_data(directory, starting_date=None):
     """Query the Oregon Health Authority for the latest Aid & Assist data.
 
     Add to the folder, if there are updates.
@@ -16,23 +16,32 @@ def update_aid_and_assist_data(directory):
 
     Args:
         directory (str): The directory to save the downloaded reports and check for existing reports.
+        starting_date (str, optional): The starting date in 'YYYY-MM' or 'YYYY.MM' format to begin checking for updates. Defaults to None.
     Raises:
         requests.RequestException: If there is an error downloading the report.
+        ValueError: If no valid starting date is found.
     """
 
     # Check if there is a report for months we do not have, up to the current month.
     # If so, download it.
 
     # Go through our directory and find the latest date in the format YYYY-MM or YYYY.MM
-    date_match = None
-    for file_ in os.listdir(directory):
-        if file_.endswith(".pdf"):
-            match = re.search(r"\d{4}[-\.]\d{2}", file_)
-            if match:
-                date_str = match.group()
-                date_temp = pd.to_datetime(date_str)
-                if not date_match or date_temp > date_match:
-                    date_match = date_temp
+    if starting_date:
+        date_match = pd.to_datetime(starting_date)
+    else:
+        date_match = None
+        for file_ in os.listdir(directory):
+            if file_.endswith(".pdf"):
+                match = re.search(r"\d{4}[-\.]\d{2}", file_)
+                if match:
+                    date_str = match.group()
+                    date_temp = pd.to_datetime(date_str)
+                    if not date_match or date_temp > date_match:
+                        date_match = date_temp
+        if date_match is None:
+            raise ValueError(
+                "No existing files found to determine starting date. Provide a starting_date."
+            )
 
     current_date = date.today()
     while (
@@ -62,7 +71,7 @@ def update_aid_and_assist_data(directory):
             continue
 
 
-def update_census_data(directory):
+def update_census_data(directory, starting_date=None):
     """Query the Oregon Health Authority for the latest census data.
 
     Add to the folder, if there are updates.
@@ -71,23 +80,32 @@ def update_census_data(directory):
 
     Args:
         directory (str): The directory to save the downloaded reports and check for existing reports.
+        starting_date (str, optional): The starting date in 'YYYY-MM-DD' format to begin checking for updates. Defaults to None.
     Raises:
         requests.RequestException: If there is an error downloading the report.
+        ValueError: If no valid starting date is found.
     """
 
     # Check if there is a report for months we do not have, up to the current month.
     # If so, download it.
 
     # Go through our directory and find the latest date in the format YYYY-MM or YYYY.MM
-    date_match = None
-    for file_ in os.listdir(directory):
-        if file_.endswith(".pdf"):
-            match = re.search(r"\d{4}[-\.]\d{2}-\d{2}", file_)
-            if match:
-                date_str = match.group()
-                date_temp = pd.to_datetime(date_str)
-                if not date_match or date_temp > date_match:
-                    date_match = date_temp
+    if starting_date:
+        date_match = pd.to_datetime(starting_date)
+    else:
+        date_match = None
+        for file_ in os.listdir(directory):
+            if file_.endswith(".pdf"):
+                match = re.search(r"\d{4}[-\.]\d{2}-\d{2}", file_)
+                if match:
+                    date_str = match.group()
+                    date_temp = pd.to_datetime(date_str)
+                    if not date_match or date_temp > date_match:
+                        date_match = date_temp
+        if date_match is None:
+            raise ValueError(
+                "No existing files found to determine starting date. Provide a starting_date."
+            )
 
     current_date = pd.Timestamp(date.today())
     while date_match < current_date:
