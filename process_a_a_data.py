@@ -77,7 +77,7 @@ def setup_java_environment():
         return None
 
 
-def process_aa_timeseries(directory):
+def process_aa_admit_discharge_timeseries(directory):
     """Process Aid & Assist timeseries data from PDF files.
 
     Args:
@@ -312,5 +312,73 @@ def process_aa_timeseries(directory):
     )
 
 
-process_aa_timeseries(directory=os.getcwd())
-update_census_data(directory=os.path.join(os.getcwd(), "../", "OSH AandA Census"))
+def process_a_a_census_timeseries(directory: str):
+    update_census_data(directory)
+    # Set up Java environment before using tabula
+    setup_java_environment()
+
+    census_df = pd.DataFrame()
+    # Iterate through all PDF files in the directory
+    for file_ in tqdm(os.listdir(directory)):
+        if file_.endswith(".pdf"):
+            # Extract full date in format YYYY-MM-DD
+            date_match = re.search(r"\d{4}-\d{2}-\d{2}", file_)
+            date_match = date_match.group() if date_match else None
+            if date_match is None:
+                raise ValueError(f"Date not found in filename {file_}.")
+            date_match = pd.to_datetime(date_match)
+
+            tables = tabula.read_pdf(
+                os.path.join(directory, file_),
+                pages="all",
+                multiple_tables=False,
+                stream=True,
+                lattice=True,
+            )
+            assert len(tables) == 1, (
+                f"Expected 1 table, found {len(tables)} in {file_} on page 1"
+            )
+            df = tables[0]
+            df.columns = [col.replace("\r", " ") for col in df.columns]
+            # Remove % and make the data numeric
+            df = df.replace("%", "", regex=True)
+            df = df.apply(pd.to_numeric, errors="ignore")
+            df["Date"] = date_match
+
+            # Each column should sum to the bottom row, so we will check that
+            # % Fel and % Misd are averages, so we won't include those.
+            # Do not include 10 or 12, or the first or last column.
+            sum_columns = df.columns[1:-1].difference(["% Fel.", "% Misd."])
+            # Turn this list into numeric indices
+            sum_columns = [df.columns.get_loc(col) for col in sum_columns]
+            assert (
+                df.iloc[-1, sum_columns].fillna(0)
+                == df.iloc[:-1, sum_columns].sum(axis=0, skipna=True).round(0)
+            ).all(), "Sum rows do not match sum of previous rows"
+
+            # turn this df into long format
+            df = pd.melt(
+                df,
+                id_vars=["County", "Date"],
+                var_name="Variable",
+                value_name="Value",
+            )
+
+            census_df = pd.concat([census_df, df], ignore_index=True)
+
+    # Save the combined census dataframe to a CSV file
+    census_df.to_csv(
+        os.path.join(
+            directory,
+            f"osh_a_a_census_timeseries_through_{max(census_df['Date']).strftime('%Y-%m')}.csv",
+        ),
+        index=False,
+    )
+
+
+process_aa_admit_discharge_timeseries(
+    directory=os.path.join(os.getcwd(), "../OSH AandA Admit Discharge")
+)
+process_a_a_census_timeseries(
+    directory=os.path.join(os.getcwd(), "../OSH AandA Census")
+)
