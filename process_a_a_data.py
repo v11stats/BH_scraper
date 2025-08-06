@@ -8,7 +8,11 @@ import tabula
 from pypdf import PdfReader
 from tqdm import tqdm
 
-from download_data_updates import update_aid_and_assist_data, update_census_data
+from download_data_updates import (
+    update_aid_and_assist_data,
+    update_census_data,
+    update_restoration_limit_data,
+)
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -522,4 +526,7 @@ process_aa_admit_discharge_timeseries(
 )
 process_a_a_census_timeseries(
     directory=os.path.join(os.getcwd(), "../OSH AandA Census")
+)
+update_restoration_limit_data(
+    directory=os.path.join(os.getcwd(), "../OSH_Restoration_Limit_data")
 )
