@@ -685,25 +685,68 @@ def process_restoration_limit_data(directory: str):
                     ].sum(axis=0, skipna=True).round(0)
                     bad_cols = mismatch_mask[mismatch_mask].index.tolist()
 
-                    if any(
-                        item in bad_cols
-                        for item in [
-                            "30-Day RL Notices Sent",
-                            "Discharged Prior to Meeting 30-Day RL Notice Period",
-                            "Discharged After Meeting 30-Day RL Notice Period",
-                            "Community Restoration",
-                            "Charges Dismissed or Released",
-                        ]
-                    ):
-                        # If any of these columns are not matching, then we need to fix them
-                        # The last row is the sum of the previous rows, so we can fix it
-                        df.iloc[-1, bad_cols] = (
-                            df.iloc[:-1, bad_cols].sum(axis=0, skipna=True).round(0)
-                        )
+                    group1 = [
+                        "30-Day RL Notices Sent",
+                        "Discharged Prior to Meeting 30-Day RL Notice Period",
+                        "Discharged After Meeting 30-Day RL Notice Period",
+                    ]
+                    group2 = ["Community Restoration", "Charges Dismissed or Released"]
+
+                    if any(item in bad_cols for item in group1 + group2):
+                        # Check which group is broken
+                        if any(item in bad_cols for item in group1):
+                            # we know the totals will be right
+                            # Find columns with NaN and try different combinations until we match the total
+                            temp_data = df[group1]
+                        if any(item in bad_cols for item in group2):
+                            temp_data = df[group2]
                     else:
                         raise AssertionError(
                             f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
                         )
+
+
+def calculate_all_permutations(temp_data: pd.DataFrame):
+    # Separate the data and the totals
+    data_rows = temp_data.iloc[:-1].copy()
+    total_row = temp_data.iloc[-1]
+
+    num_cols = data_rows.shape[1]
+    num_rows = data_rows.shape[0]
+
+    # Get all row-wise values
+    values = [row.dropna().values.tolist() for _, row in data_rows.iterrows()]
+
+    # Generate all possible column permutations of these values
+    from itertools import product
+
+    # Each value in `values[i]` must be assigned to a unique subset of columns
+    def all_valid_positions(row_values, num_cols):
+        """Return all possible placements of the row_values into num_cols columns"""
+        from itertools import combinations, permutations
+
+        positions = []
+        col_indices = list(range(num_cols))
+        for cols in combinations(col_indices, len(row_values)):
+            for perm in permutations(row_values):
+                row = [0] * num_cols
+                for val, idx in zip(perm, cols):
+                    row[idx] = val
+                positions.append(row)
+        return positions
+
+    # Generate all possible row configurations
+    row_options = [all_valid_positions(val, num_cols) for val in values]
+
+    # Try all combinations of those rows
+    for combo in product(*row_options):
+        combo_df = pd.DataFrame(combo)
+        if combo_df.sum().round(0).equals(total_row.fillna(0).round(0)):
+            print("✅ Found a valid configuration:")
+            print(combo_df)
+            break
+    else:
+        return -1
 
 
 process_aa_admit_discharge_timeseries(
