@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 
+import numpy as np
 import pandas as pd
 import tabula
 from pypdf import PdfReader
@@ -329,8 +330,12 @@ def fix_incorrect_census_and_a_a_cols(df: pd.DataFrame):
         for col in df.columns
     ]
     # This error also results in an incorrect total.
-    df.loc[df["County"] == "Total", "A&A Census"] = 379
-    df.loc[df["County"] == "Total", ".315 Census"] = 0
+    df.loc[df["County"] == "Total", "A&A Census"] = (
+        df["A&A Census"][1:-1].astype(float).sum()
+    )
+    df.loc[df["County"] == "Total", ".315 Census"] = (
+        df[".315 Census"][1:-1].astype(float).sum()
+    )
     return df
 
 
@@ -353,6 +358,7 @@ def process_a_a_census_timeseries(directory: str):
     # Iterate through all PDF files in the directory
     for file_ in tqdm(os.listdir(directory)):
         if file_.endswith(".pdf"):
+            more_than_one_page = False
             # Extract full date in format YYYY-MM-DD
             date_match = re.search(r"\d{4}-\d{2}-\d{2}", file_)
             date_match = date_match.group() if date_match else None
@@ -360,17 +366,47 @@ def process_a_a_census_timeseries(directory: str):
                 raise ValueError(f"Date not found in filename {file_}.")
             date_match = pd.to_datetime(date_match)
 
-            tables = tabula.read_pdf(
-                os.path.join(directory, file_),
-                pages="all",
-                multiple_tables=False,
-                stream=True,
-                lattice=False,
-            )
-            assert len(tables) == 1, (
-                f"Expected 1 table, found {len(tables)} in {file_} on page 1"
-            )
-            df = tables[0]
+            # Check if the table is multi-page
+            try:
+                with open(os.path.join(directory, file_), "rb") as file:
+                    reader = PdfReader(file)
+                    num_pages = len(reader.pages)
+            except Exception as e:
+                print(f"Error processing PDF: {e}")
+            if num_pages == 1:
+                tables = tabula.read_pdf(
+                    os.path.join(directory, file_),
+                    pages="all",
+                    multiple_tables=False,
+                    stream=True,
+                    lattice=False,
+                )
+                assert len(tables) == 1, (
+                    f"Expected 1 table, found {len(tables)} in {file_} on page 1"
+                )
+                df = tables[0]
+            else:
+                # If the table is multi-page, read the first page and figure out the None listed number
+                tables = tabula.read_pdf(
+                    os.path.join(directory, file_),
+                    pages="all",
+                    multiple_tables=True,
+                    stream=True,
+                    lattice=False,
+                )
+                more_than_one_page = True
+                if tables[1].shape[1] > 5:
+                    second_table = tables[1]
+                    second_table.columns = [
+                        np.nan if "Unnamed" in str(col) else col
+                        for col in second_table.columns
+                    ]
+                    new_row = second_table.columns.to_frame().T
+                    second_table = pd.concat([new_row, tables[1]])
+                    second_table.columns = tables[0].columns
+                    df = pd.concat([tables[0], second_table], ignore_index=True)
+                else:
+                    df = tables[0]
             # The paragraph break is splitting the column names into the col and first row.
             # Combine them into a column name and drop the first row.
             df.columns = ["" if "Unnamed" in str(col) else col for col in df.columns]
@@ -397,13 +433,22 @@ def process_a_a_census_timeseries(directory: str):
                 "vs. Pop. Dif.": "Census vs. Pop. Dif.",
                 "Censu s": "A&A Census",
                 "A&A Censu s": "A&A Census",
+                "Listed": "None Listed",
             }
             # Replace the column names
             df = df.rename(columns=column_replacements)
 
-            # If this is our one problem file, fix it
-            if file_ == "Aid-and-assist-census-by-county-2024-08-19.pdf":
+            # If the form is incorrectly combining two columns, fix that
+            if ".315 A&A Census Census" in df.columns:
                 df = fix_incorrect_census_and_a_a_cols(df)
+            df = df.drop(index=0).reset_index(drop=True)
+            if more_than_one_page:
+                # None listed is cut off, so calculate the values ourselves
+                df["None Listed"] = (
+                    df["A&A Census"].apply(pd.to_numeric)
+                    - df["Fel."].apply(pd.to_numeric)
+                    - df["Misd."].apply(pd.to_numeric)
+                )
             # We have specific columns, so make sure they're all there
             assert set(df.columns).issuperset(
                 {
@@ -423,7 +468,6 @@ def process_a_a_census_timeseries(directory: str):
                     "None Listed",
                 }
             ), f"Missing expected columns in {file_}"
-            df = df.drop(index=0).reset_index(drop=True)
             # Remove % and make the data numeric
             df = df.replace("%", "", regex=True)
             df = df.replace("#DIV/0!", pd.NA, regex=True)
