@@ -313,6 +313,16 @@ def process_aa_admit_discharge_timeseries(directory):
 
 
 def process_a_a_census_timeseries(directory: str):
+    """Process the A&A census timeseries data.
+
+    Args:
+        directory (str): The directory containing the PDF files.
+
+    Raises:
+        ValueError: If the file being processed does not contain a valid date in the filename.
+        AssertionError: If the expected number of tables is not found in the PDF file.
+        AssertionError: If the total row does not match the sum of previous rows for numeric columns
+    """
     update_census_data(directory)
     # Set up Java environment before using tabula
     setup_java_environment()
@@ -333,16 +343,53 @@ def process_a_a_census_timeseries(directory: str):
                 pages="all",
                 multiple_tables=False,
                 stream=True,
-                lattice=True,
+                lattice=False,
             )
             assert len(tables) == 1, (
                 f"Expected 1 table, found {len(tables)} in {file_} on page 1"
             )
             df = tables[0]
-            df.columns = [col.replace("\r", " ") for col in df.columns]
+            # The paragraph break is splitting the column names into the col and first row.
+            # Combine them into a column name and drop the first row.
+            df.columns = ["" if "Unnamed" in str(col) else col for col in df.columns]
+            df.columns = [
+                f"{col} {str(df.iloc[0, i])}".strip()
+                for i, col in enumerate(df.columns)
+            ]
+            df.columns = [col.replace(".1", "") for col in df.columns]
+            # If one of the columns is only "from Prev. Week", make it "Change from Prev. Week"
+            df.columns = [
+                col if col != "from Prev. Week" else "Change from Prev. Week"
+                for col in df.columns
+            ]
+            # We have specific columns, so make sure they're all there
+            assert set(df.columns).issuperset(
+                {
+                    "County",
+                    ".370 Census",
+                    ".365 Census",
+                    ".315 Census",
+                    "A&A Census",
+                    "Change from Prev. Week",
+                    "% of Census",
+                    "% of State Pop.",
+                    "Census vs. Pop. Dif.",
+                    "Fel.",
+                    "% Fel.",
+                    "Misd.",
+                    "% Misd.",
+                    "None Listed",
+                }
+            ), f"Missing expected columns in {file_}"
+            df = df.drop(index=0).reset_index(drop=True)
             # Remove % and make the data numeric
             df = df.replace("%", "", regex=True)
-            df = df.apply(pd.to_numeric, errors="ignore")
+            df = df.replace("#DIV/0!", pd.NA, regex=True)
+            df = df.replace({r"[‐‑–—−]": "-"}, regex=True)
+            counties = df["County"]
+            # Turn all columns to numeric, except the first
+            df = df.iloc[:, 1:].apply(pd.to_numeric)
+            df.insert(0, "County", counties)
             df["Date"] = date_match
 
             # Each column should sum to the bottom row, so we will check that
@@ -351,10 +398,18 @@ def process_a_a_census_timeseries(directory: str):
             sum_columns = df.columns[1:-1].difference(["% Fel.", "% Misd."])
             # Turn this list into numeric indices
             sum_columns = [df.columns.get_loc(col) for col in sum_columns]
-            assert (
+            if not (
                 df.iloc[-1, sum_columns].fillna(0)
                 == df.iloc[:-1, sum_columns].sum(axis=0, skipna=True).round(0)
-            ).all(), "Sum rows do not match sum of previous rows"
+            ).all():
+                # It may be a rounding issue so we will allow for a difference of 1
+                assert (
+                    abs(
+                        df.iloc[-1, sum_columns]
+                        - df.iloc[:-1, sum_columns].sum(axis=0, skipna=True).round(0)
+                    )
+                    <= 1
+                ).all(), f"Total row does not match sum of previous rows in {file_}"
 
             # turn this df into long format
             df = pd.melt(
