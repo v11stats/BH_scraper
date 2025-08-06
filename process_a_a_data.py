@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+from itertools import combinations, permutations, product
 
 import numpy as np
 import pandas as pd
@@ -698,55 +699,92 @@ def process_restoration_limit_data(directory: str):
                             # we know the totals will be right
                             # Find columns with NaN and try different combinations until we match the total
                             temp_data = df[group1]
+                            temp_data, response = fix_misaligned_table(temp_data)
+                            if response == -1:
+                                raise AssertionError(
+                                    f"Could not fix misaligned table in {file_} for columns {bad_cols}"
+                                )
+                            else:
+                                df[group1] = temp_data
                         if any(item in bad_cols for item in group2):
                             temp_data = df[group2]
+
+                            temp_data, response = fix_misaligned_table(temp_data)
+                            if response == -1:
+                                raise AssertionError(
+                                    f"Could not fix misaligned table in {file_} for columns {bad_cols}"
+                                )
+                            else:
+                                df[group2] = temp_data
                     else:
                         raise AssertionError(
                             f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
                         )
 
 
-def calculate_all_permutations(temp_data: pd.DataFrame):
-    # Separate the data and the totals
-    data_rows = temp_data.iloc[:-1].copy()
-    total_row = temp_data.iloc[-1]
+def all_valid_positions(row_values, num_cols):
+    col_indices = list(range(num_cols))
+    valid_rows = []
+    for cols in combinations(col_indices, len(row_values)):
+        for perm in permutations(row_values):
+            row = [0] * num_cols
+            for val, idx in zip(perm, cols):
+                row[idx] = val
+            valid_rows.append(row)
+    return valid_rows
 
-    num_cols = data_rows.shape[1]
-    num_rows = data_rows.shape[0]
 
-    # Get all row-wise values
-    values = [row.dropna().values.tolist() for _, row in data_rows.iterrows()]
+def fix_misaligned_table(df):
+    """
+    Fixes misaligned numeric data in a DataFrame where some rows have values shifted
+    due to whitespace issues. Assumes last row contains column totals.
+    Only rows with NaNs are considered for permutation.
+    """
+    df = df.copy()
 
-    # Generate all possible column permutations of these values
-    from itertools import product
+    # Separate the total row from the rest
+    data_rows = df.iloc[:-1].copy()
+    total_row = df.iloc[-1]
+    num_cols = df.shape[1]
 
-    # Each value in `values[i]` must be assigned to a unique subset of columns
-    def all_valid_positions(row_values, num_cols):
-        """Return all possible placements of the row_values into num_cols columns"""
-        from itertools import combinations, permutations
+    # Track which rows are fine and which need fixing
+    full_rows = []
+    rows_to_permute = []
 
-        positions = []
-        col_indices = list(range(num_cols))
-        for cols in combinations(col_indices, len(row_values)):
-            for perm in permutations(row_values):
-                row = [0] * num_cols
-                for val, idx in zip(perm, cols):
-                    row[idx] = val
-                positions.append(row)
-        return positions
+    for idx, row in data_rows.iterrows():
+        if row.isna().sum() == 0:
+            full_rows.append((idx, row.values.tolist()))
+        else:
+            values = row.dropna().values.tolist()
+            rows_to_permute.append((idx, values))
 
-    # Generate all possible row configurations
-    row_options = [all_valid_positions(val, num_cols) for val in values]
+    # Generate all valid permutations for each permutable row
+    row_options = []
+    row_indices = []
+    for idx, values in rows_to_permute:
+        row_indices.append(idx)
+        row_options.append(all_valid_positions(values, num_cols))
 
-    # Try all combinations of those rows
+    # Try all combinations of permuted rows
     for combo in product(*row_options):
-        combo_df = pd.DataFrame(combo)
-        if combo_df.sum().round(0).equals(total_row.fillna(0).round(0)):
-            print("✅ Found a valid configuration:")
-            print(combo_df)
-            break
-    else:
-        return -1
+        candidate_df = data_rows.copy()
+
+        # Apply permuted rows
+        for idx, permuted_row in zip(row_indices, combo):
+            candidate_df.iloc[idx] = permuted_row
+
+        # Re-apply full rows (should already be unchanged, but to be safe)
+        for idx, row_values in full_rows:
+            candidate_df.iloc[idx] = row_values
+
+        # Compare column sums
+        col_sum = candidate_df.sum(axis=0).round(0)
+        if col_sum.equals(total_row.fillna(0).round(0)):
+            # Overwrite original DataFrame
+            df.iloc[:-1, :] = candidate_df.values
+            return df, 1  # fixed DataFrame
+
+    return df, -1  # unchanged if no fix found
 
 
 process_aa_admit_discharge_timeseries(
