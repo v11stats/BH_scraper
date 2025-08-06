@@ -89,8 +89,8 @@ def update_census_data(directory):
                 if not date_match or date_temp > date_match:
                     date_match = date_temp
 
-    current_date = date.today()
-    while date_match != current_date:
+    current_date = pd.Timestamp(date.today())
+    while date_match < current_date:
         # If we don't have the latest data, update the date_match to the current date
         date_match = date_match + pd.DateOffset(days=1)
 
