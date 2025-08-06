@@ -537,7 +537,8 @@ def process_restoration_limit_data(directory: str):
     # Set up Java environment before using tabula
     setup_java_environment()
 
-    restoration_df = pd.DataFrame()
+    restoration_cohort1 = pd.DataFrame()
+    restoration_cohort2 = pd.DataFrame()
     # Iterate through all PDF files in the directory
     for file_ in tqdm(os.listdir(directory)):
         if file_.endswith(".pdf"):
@@ -559,7 +560,7 @@ def process_restoration_limit_data(directory: str):
             )
             df_cohort1 = tables[0]
             df_cohort2 = tables[1]
-
+            j = 0
             for df in [df_cohort1, df_cohort2]:
                 # These tables are pretty messy.
                 # The header + first column is unecessary, so we will drop it.
@@ -628,12 +629,15 @@ def process_restoration_limit_data(directory: str):
                 column_replacements = {
                     "End of Jurisdiction (Non-Mosman)": "Other",
                     "Reached Restoration Limit": "End of Statuary Jurisdiction",
+                    "Admitted since 9/1/2022": "At OSH as of 9/1/2022",
                 }
                 # The following column is a repeat, so we can drop it
                 # Replace the column names
                 df = df.rename(columns=column_replacements)
                 df.drop(columns=["End of Statuary Jurisdiction"], inplace=True)
 
+                if "Other" not in df.columns:
+                    df["Other"] = np.nan  # this isn't in earlier files
                 # We have specific columns, so make sure they're all there
                 assert set(df.columns).issuperset(
                     {
@@ -720,6 +724,40 @@ def process_restoration_limit_data(directory: str):
                         raise AssertionError(
                             f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
                         )
+                # Turn the data into long format
+                df = pd.melt(
+                    df,
+                    id_vars=["Charge", "Date"],
+                    var_name="Variable",
+                    value_name="Value",
+                )
+
+                if j == 0:
+                    restoration_cohort1 = pd.concat(
+                        [restoration_cohort1, df], ignore_index=True
+                    )
+
+                else:
+                    restoration_cohort2 = pd.concat(
+                        [restoration_cohort2, df], ignore_index=True
+                    )
+                j += 1
+    # Save the combined census dataframe to a CSV file
+    restoration_cohort1.to_csv(
+        os.path.join(
+            directory,
+            f"osh_a_a_restoration_limit_cohort1_through_{max(restoration_cohort1['Date']).strftime('%Y-%m')}.csv",
+        ),
+        index=False,
+    )
+
+    restoration_cohort2.to_csv(
+        os.path.join(
+            directory,
+            f"osh_a_a_restoration_limit_cohort2_through_{max(restoration_cohort2['Date']).strftime('%Y-%m')}.csv",
+        ),
+        index=False,
+    )
 
 
 def all_valid_positions(row_values, num_cols):
