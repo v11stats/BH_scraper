@@ -374,23 +374,33 @@ def process_a_a_census_timeseries(directory: str):
             # The paragraph break is splitting the column names into the col and first row.
             # Combine them into a column name and drop the first row.
             df.columns = ["" if "Unnamed" in str(col) else col for col in df.columns]
-            df.columns = [
-                f"{col} {str(df.iloc[0, i])}".strip()
-                for i, col in enumerate(df.columns)
-            ]
+            # Very occassionally the data we want is actually in row 2 instead of 1.
+            # Check the cell in the first column of the first row for "County"
+            if not re.search(r"County", str(df.iloc[0, 0])):
+                if re.search(r"County", str(df.iloc[1, 0])):
+                    # In this case, combine the column names with rows 1 & 2
+                    df.columns = [
+                        f"{col} {str(df.iloc[0, i])} {str(df.iloc[1, i])}".strip()
+                        for i, col in enumerate(df.columns)
+                    ]
+                    df.columns = [col.replace("nan ", "") for col in df.columns]
+                    df = df.drop(index=1).reset_index(drop=True)
+            else:
+                df.columns = [
+                    f"{col} {str(df.iloc[0, i])}".strip()
+                    for i, col in enumerate(df.columns)
+                ]
             df.columns = [col.replace(".1", "") for col in df.columns]
-            # If one of the columns is only "from Prev. Week", make it "Change from Prev. Week"
-            df.columns = [
-                col if col != "from Prev. Week" else "Change from Prev. Week"
-                for col in df.columns
-            ]
-            df.columns = [
-                col if col != "State Pop." else "% of State Pop." for col in df.columns
-            ]
-            df.columns = [
-                col if col != "vs. Pop. Dif." else "Census vs. Pop. Dif."
-                for col in df.columns
-            ]
+            column_replacements = {
+                "from Prev. Week": "Change from Prev. Week",
+                "State Pop.": "% of State Pop.",
+                "vs. Pop. Dif.": "Census vs. Pop. Dif.",
+                "Censu s": "A&A Census",
+                "A&A Censu s": "A&A Census",
+            }
+            # Replace the column names
+            df = df.rename(columns=column_replacements)
+
             # If this is our one problem file, fix it
             if file_ == "Aid-and-assist-census-by-county-2024-08-19.pdf":
                 df = fix_incorrect_census_and_a_a_cols(df)
