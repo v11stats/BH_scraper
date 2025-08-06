@@ -521,6 +521,191 @@ def process_a_a_census_timeseries(directory: str):
     )
 
 
+def process_restoration_limit_data(directory: str):
+    """Process the A&A restoration limit timeseries data.
+
+    Args:
+        directory (str): The directory containing the PDF files.
+
+    Raises:
+        ValueError: If the file being processed does not contain a valid date in the filename.
+        AssertionError: If the expected number of tables is not found in the PDF file.
+        AssertionError: If the total row does not match the sum of previous rows for numeric columns
+    """
+    update_restoration_limit_data(directory)
+    # Set up Java environment before using tabula
+    setup_java_environment()
+
+    restoration_df = pd.DataFrame()
+    # Iterate through all PDF files in the directory
+    for file_ in tqdm(os.listdir(directory)):
+        if file_.endswith(".pdf"):
+            # Extract full date in format YYYY-MM-DD
+            date_match = re.search(r"\d{4}[-|.]\d{2}[-|.]\d{2}", file_)
+            date_match = date_match.group() if date_match else None
+            if date_match is None:
+                raise ValueError(f"Date not found in filename {file_}.")
+            date_match = pd.to_datetime(date_match)
+
+            tables = tabula.read_pdf(
+                os.path.join(directory, file_),
+                pages="1",
+                multiple_tables=True,
+                stream=True,
+            )
+            assert len(tables) == 2, (
+                f"Expected 2 tables, found {len(tables)} in {file_} on page 1"
+            )
+            df_cohort1 = tables[0]
+            df_cohort2 = tables[1]
+
+            for df in [df_cohort1, df_cohort2]:
+                # These tables are pretty messy.
+                # The header + first column is unecessary, so we will drop it.
+                df = df.drop(index=0).reset_index(drop=True)
+                df.columns = df.iloc[
+                    0, :
+                ].to_list()  # Use the second row as column names
+                df = df.drop(index=0).reset_index(drop=True)
+                df.columns = [
+                    f"{col} {str(df.iloc[0, i])} {str(df.iloc[1, i])}".strip()
+                    for i, col in enumerate(df.columns)
+                ]
+                df = df.drop(index=[0, 1]).reset_index(drop=True)
+                df.columns = [col.replace("nan ", "") for col in df.columns]
+
+                # The column with discharge info must be split into 3 columns
+                i = 0
+                for col in df.columns:
+                    if "Notices Sent" in col:
+                        break
+                    i += 1
+                df[
+                    [
+                        "30-Day RL Notices Sent",
+                        "Discharged Prior to Meeting 30-Day RL Notice Period",
+                        "Discharged After Meeting 30-Day RL Notice Period",
+                    ]
+                ] = df.iloc[:, i].str.split(expand=True)
+                df = df.drop(columns=df.columns[i])
+
+                # The column that must be split may be one of 2 options. Check if either is already present
+                if "Community Restoration" not in df.columns:
+                    # If not, then we need to split the column
+                    i = 0
+                    for col in df.columns:
+                        if "Charges Community" in col:
+                            break
+                        i += 1
+                    df[
+                        [
+                            "Community Restoration",
+                            "Charges Dismissed or Released",
+                        ]
+                    ] = df.iloc[:, i].str.split(expand=True)
+                    df = df.drop(columns=df.columns[i])
+                else:
+                    i = 0
+                    for col in df.columns:
+                        if "Charges Discharged" in col:
+                            break
+                        i += 1
+                    df[
+                        [
+                            "Charges Dismissed or Released",
+                            "End of Statuary Jurisdiction",
+                        ]
+                    ] = df.iloc[:, i].str.split(expand=True)
+                    df = df.drop(columns=df.columns[i])
+                # Rename the first few columns
+                df = df.rename(
+                    columns={
+                        df.columns[0]: "Charge",
+                        df.columns[2]: "At OSH as of Today",
+                    }
+                )
+                column_replacements = {
+                    "End of Jurisdiction (Non-Mosman)": "Other",
+                    "Reached Restoration Limit": "End of Statuary Jurisdiction",
+                }
+                # The following column is a repeat, so we can drop it
+                # Replace the column names
+                df = df.rename(columns=column_replacements)
+                df.drop(columns=["End of Statuary Jurisdiction"], inplace=True)
+
+                # We have specific columns, so make sure they're all there
+                assert set(df.columns).issuperset(
+                    {
+                        "Charge",
+                        "At OSH as of 9/1/2022",
+                        "At OSH as of Today",
+                        "Found Able",
+                        "Found Never Able",
+                        "Other",
+                        "Total Discharged",
+                        "30-Day RL Notices Sent",
+                        "Discharged Prior to Meeting 30-Day RL Notice Period",
+                        "Discharged After Meeting 30-Day RL Notice Period",
+                        "Community Restoration",
+                        "Charges Dismissed or Released",
+                    }
+                ), f"Missing expected columns in {file_}"
+                df["Date"] = date_match
+
+                # Since we broke apart some columns, we need to reorder them
+                df = df[
+                    [
+                        "Charge",
+                        "At OSH as of 9/1/2022",
+                        "At OSH as of Today",
+                        "30-Day RL Notices Sent",
+                        "Discharged Prior to Meeting 30-Day RL Notice Period",
+                        "Discharged After Meeting 30-Day RL Notice Period",
+                        "Found Able",
+                        "Found Never Able",
+                        "Community Restoration",
+                        "Charges Dismissed or Released",
+                        "Other",
+                        "Total Discharged",
+                        "Date",
+                    ]
+                ]
+                # Turn all columns to numeric, except the first and last
+                df.iloc[:, 1:-1] = df.iloc[:, 1:-1].apply(pd.to_numeric)
+
+                # All columns except the first and last should add to the final row
+                if not (
+                    df.iloc[-1, 1:-1].fillna(0)
+                    == df.iloc[:-1, 1:-1].sum(axis=0, skipna=True).round(0)
+                ).all():
+                    # Try to fix the columns we split.
+                    # Get the columns that aren't matching:
+                    mismatch_mask = df.iloc[-1, 1:-1].fillna(0) != df.iloc[
+                        :-1, 1:-1
+                    ].sum(axis=0, skipna=True).round(0)
+                    bad_cols = mismatch_mask[mismatch_mask].index.tolist()
+
+                    if any(
+                        item in bad_cols
+                        for item in [
+                            "30-Day RL Notices Sent",
+                            "Discharged Prior to Meeting 30-Day RL Notice Period",
+                            "Discharged After Meeting 30-Day RL Notice Period",
+                            "Community Restoration",
+                            "Charges Dismissed or Released",
+                        ]
+                    ):
+                        # If any of these columns are not matching, then we need to fix them
+                        # The last row is the sum of the previous rows, so we can fix it
+                        df.iloc[-1, bad_cols] = (
+                            df.iloc[:-1, bad_cols].sum(axis=0, skipna=True).round(0)
+                        )
+                    else:
+                        raise AssertionError(
+                            f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
+                        )
+
+
 process_aa_admit_discharge_timeseries(
     directory=os.path.join(os.getcwd(), "../OSH AandA Admit Discharge")
 )
