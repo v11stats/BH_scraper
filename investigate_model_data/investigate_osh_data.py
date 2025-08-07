@@ -240,7 +240,7 @@ def find_osh_discharge_proportions(
     df_count_total_mean["In_Group_Mean"] += df_count_total_mean["In_Group_Mean_needed"]
 
     df_count_total_mean.to_csv(
-        os.path.join(save_path, f"{save_name}_discharge_proportions_mean.csv"),
+        os.path.join(save_path, save_name),
         index=False,
     )
 
