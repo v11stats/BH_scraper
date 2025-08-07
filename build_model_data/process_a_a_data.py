@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import sys
 from itertools import combinations, permutations, product
 
 import numpy as np
@@ -9,6 +10,8 @@ import tabula
 from pypdf import PdfReader
 from tqdm import tqdm
 
+# Add the parent directory to the Python path to import from build_model_data
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from build_model_data.download_data_updates import (
     update_aid_and_assist_data,
     update_census_data,
@@ -617,7 +620,7 @@ def process_restoration_limit_data(directory: str):
                     df[
                         [
                             "Charges Dismissed or Released",
-                            "End of Statuary Jurisdiction",
+                            "Reached Restoration Limit",
                         ]
                     ] = df.iloc[:, i].str.split(expand=True)
                     df = df.drop(columns=df.columns[i])
@@ -630,8 +633,8 @@ def process_restoration_limit_data(directory: str):
                 )
                 column_replacements = {
                     "End of Jurisdiction (Non-Mosman)": "Other",
-                    "Reached Restoration Limit": "End of Statuary Jurisdiction",
                     "Admitted since 9/1/2022": "At OSH as of 9/1/2022",
+                    "End of Statuary Jurisdiction": "Other",
                 }
                 # Replace the column names
                 df = df.rename(columns=column_replacements)
@@ -653,7 +656,7 @@ def process_restoration_limit_data(directory: str):
                         "Discharged After Meeting 30-Day RL Notice Period",
                         "Community Restoration",
                         "Charges Dismissed or Released",
-                        "End of Statuary Jurisdiction",
+                        "Reached Restoration Limit",
                     }
                 ), f"Missing expected columns in {file_}"
                 df["Date"] = date_match
@@ -671,7 +674,7 @@ def process_restoration_limit_data(directory: str):
                         "Found Never Able",
                         "Community Restoration",
                         "Charges Dismissed or Released",
-                        "End of Statuary Jurisdiction",
+                        "Reached Restoration Limit",
                         "Other",
                         "Total Discharged",
                         "Date",
@@ -705,7 +708,7 @@ def process_restoration_limit_data(directory: str):
                     else:
                         group2 = [
                             "Charges Dismissed or Released",
-                            "End of Statuary Jurisdiction",
+                            "Reached Restoration Limit",
                         ]
 
                     if any(item in bad_cols for item in group1 + group2):
@@ -736,7 +739,7 @@ def process_restoration_limit_data(directory: str):
                             f"Total row does not match sum of previous rows in {file_} for columns {bad_cols}"
                         )
                 # This column is a repeat, so remove it
-                df.drop(columns=["End of Statuary Jurisdiction"], inplace=True)
+                df.drop(columns=["Reached Restoration Limit"], inplace=True)
                 # Turn the data into long format
                 df = pd.melt(
                     df,
