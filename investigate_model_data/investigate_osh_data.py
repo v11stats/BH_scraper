@@ -3,8 +3,62 @@ It calculates the in-group mean for each charge and variable, and visualizes the
 
 import os
 
+import numpy as np
 import pandas as pd
 import seaborn as sns
+
+
+def find_global_stabilization_point(
+    df,
+    method="std",
+    min_points=5,
+    groups: list = ["Date", "Charge"],
+    col="In_Group_Mean",
+):
+    """
+    Identifies the global time point after which the system is most stable across all groups.
+
+    Parameters:
+        df: DataFrame with ['group1', 'group2', 'time', 'value']
+        method: 'std' or 'range'
+        min_points: Minimum number of time points required after cutoff per group
+        groups: List of columns to group by
+        col: Column to calculate instability on
+
+    Returns:
+        DataFrame with time and mean instability; also returns best time
+    """
+    all_times = sorted(df["time"].unique())
+    results = []
+
+    for t in all_times:
+        group_stabilities = []
+
+        for _, group_df in df.groupby(groups):
+            subdf = group_df[group_df["time"] >= t].sort_values("time")
+            values = subdf[col].values
+
+            if len(values) < min_points:
+                continue  # skip groups with too little data after t
+
+            if method == "std":
+                instability = np.std(values)
+            elif method == "range":
+                instability = np.max(values) - np.min(values)
+            else:
+                raise ValueError("method must be 'std' or 'range'")
+
+            group_stabilities.append(instability)
+
+        if len(group_stabilities) == 0:
+            continue
+
+        mean_instability = np.mean(group_stabilities)
+        results.append({"time": t, "mean_instability": mean_instability})
+
+    result_df = pd.DataFrame(results)
+    best_row = result_df.loc[result_df["mean_instability"].idxmin()]
+    return result_df, best_row
 
 
 def find_osh_discharge_proportions(
@@ -14,6 +68,20 @@ def find_osh_discharge_proportions(
     save_path: str,
     save_plots: bool = False,
 ):
+    """Finds and visualizes the proportions of different discharge types in the OSH dataset.
+
+    Args:
+        directory (str): The directory containing the data file.
+        file_name (str): The name of the data file.
+        save_name (str): The base name for saving output files.
+        save_path (str): The directory to save the output files.
+        save_plots (bool, optional): Whether to save the plots. Defaults to False.
+    Raises:
+        FileNotFoundError: If the data file is not found.
+        ValueError: If the data file is empty or has an invalid format.
+
+    """
+
     df = pd.read_csv(
         os.path.join(
             directory,
@@ -75,6 +143,20 @@ def find_osh_discharge_proportions(
     if save_plots:
         g.savefig(os.path.join(save_path, f"{save_name}_discharge_proportions.png"))
 
+    # Detect stabilization in the time series
+    df_count_total["time"] = pd.to_datetime(df_count_total["Date"]).astype(int) // 10**9
+    result_df, best_point = find_global_stabilization_point(
+        df_count_total,
+        method="std",  # or "range"
+        groups=["Charge", "Variable"],
+        col="In_Group_Mean",
+    )
+
+    # Use our stabilization point to filter the data
+    df_count_total = df_count_total[
+        df_count_total["time"] > best_point["time"]
+    ].reset_index(drop=True)
+    df_count_total = df_count_total.drop(columns=["time"])
     # It appears that the trend stabilizes after 2024-05, so redo this plot from that date on
     df_count_total = df_count_total[df_count_total["Date"] >= "2024-05-01"]
     df_count_total = df_count_total.sort_values(by=["Charge", "Date"])
