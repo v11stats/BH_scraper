@@ -9,7 +9,7 @@ import tabula
 from pypdf import PdfReader
 from tqdm import tqdm
 
-from download_data_updates import (
+from build_model_data.download_data_updates import (
     update_aid_and_assist_data,
     update_census_data,
     update_restoration_limit_data,
@@ -839,11 +839,11 @@ def fix_misaligned_table(df):
 
 
 process_aa_admit_discharge_timeseries(
-    directory=os.path.join(os.getcwd(), "../OSH AandA Admit Discharge")
+    directory=os.path.join(os.getcwd(), "../../OSH AandA Admit Discharge")
 )
 process_a_a_census_timeseries(
-    directory=os.path.join(os.getcwd(), "../OSH AandA Census")
+    directory=os.path.join(os.getcwd(), "../../OSH AandA Census")
 )
 process_restoration_limit_data(
-    directory=os.path.join(os.getcwd(), "../OSH_Restoration_Limit_data")
+    directory=os.path.join(os.getcwd(), "../../OSH_Restoration_Limit_data")
 )
