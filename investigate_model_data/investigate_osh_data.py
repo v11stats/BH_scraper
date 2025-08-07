@@ -264,7 +264,7 @@ find_osh_discharge_proportions(
         "../../OSH_Restoration_Limit_data",
     ),
     save_name="osh_restoration_perc_by_group.csv",
-    save_path=os.path.join(os.getcwd(), "../../../model calibration data"),
+    save_path=os.path.join(os.getcwd(), "../../../model input data"),
     save_plots=False,
     update_data=True,
 )
