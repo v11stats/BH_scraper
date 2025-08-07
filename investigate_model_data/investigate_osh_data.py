@@ -239,6 +239,19 @@ def find_osh_discharge_proportions(
     #
     df_count_total_mean["In_Group_Mean"] += df_count_total_mean["In_Group_Mean_needed"]
     df_count_total_mean = df_count_total_mean.drop(columns=["In_Group_Mean_needed"])
+
+    # This data is currently in the wrong format. We want each charge to be a column, and each variable to be a row
+    # So pivot the data accordingly
+    df_count_total_mean = df_count_total_mean.pivot(
+        index="Variable", columns="Charge", values="In_Group_Mean"
+    )
+
+    # The headers are now a multiindex. Only keep the charge level
+    # The following did not get rid of the multiindex
+    df_count_total_mean.columns = df_count_total_mean.columns.get_level_values(0)
+    df_count_total_mean = df_count_total_mean.reset_index()
+    df_count_total_mean = df_count_total_mean.rename_axis(None, axis=1)
+
     df_count_total_mean.to_csv(
         os.path.join(save_path, save_name),
         index=False,
