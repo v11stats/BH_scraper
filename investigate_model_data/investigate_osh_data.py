@@ -72,6 +72,7 @@ def find_osh_discharge_proportions(
     save_path: str,
     save_plots: bool = False,
     update_data: bool = False,
+    cohort: int = 2,
 ):
     """Finds and visualizes the proportions of different discharge types in the OSH dataset.
 
@@ -91,7 +92,11 @@ def find_osh_discharge_proportions(
         update_restoration_limit_data(directory)
 
     # There may be multiple csvs, so we will use the most recent one
-    files = [f for f in os.listdir(directory) if f.endswith(".csv") and "cohort2" in f]
+    files = [
+        f
+        for f in os.listdir(directory)
+        if f.endswith(".csv") and f"cohort{cohort}" in f
+    ]
     if not files:
         raise FileNotFoundError("No CSV files found in the directory.")
     if len(files) == 1:
@@ -121,9 +126,18 @@ def find_osh_discharge_proportions(
         "Other",
         "Total Discharged",
     ]
-    df_count = df[df["Variable"].isin(discharge_rows)]
+    df_count = df[df["Variable"].isin(discharge_rows)].fillna(0)
+    # Sort the data by date within each charge and variable group before processing cumulative data
+    df_count = df_count.sort_values(by=["Charge", "Variable", "Date"])
+    # Calculate the difference between consecutive values to get incremental changes (since data is cumulative)
+    df_count["Value"] = (
+        df_count.groupby(["Charge", "Variable"])["Value"]
+        .diff()
+        .fillna(df_count["Value"])
+    )
+
     df_count_total = df_count[df_count["Variable"] != "Total Discharged"].fillna(0)
-    df_count_values = df_count[df["Variable"] == "Total Discharged"]
+    df_count_values = df_count[df_count["Variable"] == "Total Discharged"]
     # Merge these two dataframes to get the total discharged for each date and charge
     df_count_total = df_count_total.merge(
         df_count_values[["Date", "Charge", "Value"]],
