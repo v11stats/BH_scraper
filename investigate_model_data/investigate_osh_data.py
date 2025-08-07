@@ -2,10 +2,15 @@
 It calculates the in-group mean for each charge and variable, and visualizes the trends over time"""
 
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+# Add the parent directory to the Python path to import from build_model_data
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from build_model_data.download_data_updates import update_restoration_limit_data
 
 
 def find_global_stabilization_point(
@@ -63,10 +68,10 @@ def find_global_stabilization_point(
 
 def find_osh_discharge_proportions(
     directory: str,
-    file_name: str,
     save_name: str,
     save_path: str,
     save_plots: bool = False,
+    update_data: bool = False,
 ):
     """Finds and visualizes the proportions of different discharge types in the OSH dataset.
 
@@ -82,12 +87,25 @@ def find_osh_discharge_proportions(
 
     """
 
-    df = pd.read_csv(
-        os.path.join(
-            directory,
-            file_name,
-        )
-    )
+    if update_data:
+        update_restoration_limit_data(directory)
+
+    # There may be multiple csvs, so we will use the most recent one
+    files = [f for f in os.listdir(directory) if f.endswith(".csv") and "cohort2" in f]
+    if not files:
+        raise FileNotFoundError("No CSV files found in the directory.")
+    if len(files) == 1:
+        latest_file = files[0]
+    else:
+        # Get the most recent file based on creation time
+        # This assumes the files are named in a way that reflects their creation date
+        latest_file = max(files, key=os.path.getctime)
+    latest_file = os.path.join(directory, latest_file)
+    df = pd.read_csv(latest_file)
+
+    # Check if the DataFrame is empty
+    if df.empty:
+        raise ValueError("Data file is empty.")
 
     # Calculate the in-group mean for each charge and variable, using the 'Total Discharged' as the total
     # Divide each variable in the same date by the total discharged for that date
@@ -214,8 +232,12 @@ def find_osh_discharge_proportions(
 
 
 find_osh_discharge_proportions(
-    os.path.join(
+    directory=os.path.join(
         os.getcwd(),
-        "../OSH_Restoration_Limit_data/osh_a_a_restoration_limit_cohort2_through_2025-07.csv",
-    )
+        "../../OSH_Restoration_Limit_data",
+    ),
+    save_name="osh_restoration_perc_by_group.csv",
+    save_path=os.path.join(os.getcwd(), "../datasets"),
+    save_plots=False,
+    update_data=True,
 )
