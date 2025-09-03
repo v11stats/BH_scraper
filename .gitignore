@@ -1,3 +1,4 @@
 *.pdf
 *.csv
 __pycache__/
+build_model_data/update_data_log.txt

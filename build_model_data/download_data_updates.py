@@ -223,3 +223,48 @@ def update_census_data(directory, starting_date=None):
             print("Successfully downloaded:", url)
         except requests.RequestException as e:
             print(f"{e}")
+
+
+def update_docket_data(directory):
+    """Query the Oregon Court data each M, T, W.
+
+    Add to the folder, if there are updates.
+
+    Args:
+        directory (str): The directory to save the downloaded reports and check for existing reports.
+    Raises:
+        requests.RequestException: If there is an error downloading the report.
+        ValueError: If no valid starting date is found.
+    """
+
+    date_match = None
+    for file_ in os.listdir(directory):
+        if file_.endswith(".pdf"):
+            match = re.search(r"\d{4}[-\.]\d{2}-\d{2}", file_)
+            if match:
+                date_str = match.group()
+                date_temp = pd.to_datetime(date_str)
+                if not date_match or date_temp > date_match:
+                    date_match = date_temp
+    if date_match is None:
+        date_match = pd.Timestamp(date.today()) - pd.DateOffset(days=1)
+
+    current_date = pd.Timestamp(date.today())
+    if date_match < current_date:
+        url = "https://www.mcda.us/Court_Appearance_List.pdf"
+
+        try:
+            sleep(1)
+            response = requests.get(url, verify=False)
+            response.raise_for_status()  # Raise an error for bad responses
+            with open(
+                os.path.join(
+                    directory,
+                    f"{current_date.strftime('%Y-%m-%d')}-Court_Appearance_List.pdf",
+                ),
+                "wb",
+            ) as f:
+                f.write(response.content)
+            print("Successfully downloaded:", url)
+        except requests.RequestException as e:
+            print(f"{e}")
