@@ -844,14 +844,25 @@ def fix_misaligned_table(df):
 
 if __name__ == "__main__":
     process_aa_admit_discharge_timeseries(
-        directory=os.path.join(os.getcwd(), "../../OSH AandA Admit Discharge")
+        directory=os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "../../OSH AandA Admit Discharge",
+        )
     )
     process_a_a_census_timeseries(
-        directory=os.path.join(os.getcwd(), "../../OSH AandA Census")
+        directory=os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "../../OSH AandA Census"
+        )
     )
     process_restoration_limit_data(
-        directory=os.path.join(os.getcwd(), "../../OSH_Restoration_Limit_data")
+        directory=os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "../../OSH_Restoration_Limit_data",
+        )
     )
     update_docket_data(
-        directory=os.path.join(os.getcwd(), "../../Court_Appearance_Documents")
+        directory=os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "../../Court_Appearance_Documents",
+        )
     )
