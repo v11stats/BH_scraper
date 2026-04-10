@@ -87,11 +87,12 @@ def setup_java_environment():
         return None
 
 
-def process_aa_admit_discharge_timeseries(directory):
+def process_aa_admit_discharge_timeseries(directory, starting_date=None):
     """Process Aid & Assist timeseries data from PDF files.
 
     Args:
         directory (str): The directory containing the PDF files.
+        starting_date (str, optional): The starting date in 'YYYY-MM' format. Defaults to None.
 
     Raises:
         ValueError: If the directory does not contain valid PDF files.
@@ -100,7 +101,7 @@ def process_aa_admit_discharge_timeseries(directory):
     # Set up Java environment before using tabula
     setup_java_environment()
     # Check for new data
-    update_aid_and_assist_data(directory)
+    update_aid_and_assist_data(directory, starting_date=starting_date)
 
     # set up 4 dataframes to append data from each file
     admission_list_df = pd.DataFrame()
@@ -847,7 +848,8 @@ if __name__ == "__main__":
         directory=os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             "../../OSH AandA Admit Discharge",
-        )
+        ),
+        starting_date="2022-01",
     )
     process_a_a_census_timeseries(
         directory=os.path.join(

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mental_health_data — Package Overview</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; max-width: 960px; margin: 40px auto; padding: 0 24px; color: #222; line-height: 1.6; }
+    h1 { font-size: 1.8em; border-bottom: 2px solid #2c6fad; padding-bottom: 8px; color: #1a3f6f; }
+    h2 { font-size: 1.25em; margin-top: 2em; color: #2c6fad; border-left: 4px solid #2c6fad; padding-left: 10px; }
+    h3 { font-size: 1.05em; margin-top: 1.4em; color: #444; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.92em; }
+    th { background: #2c6fad; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 7px 12px; border-bottom: 1px solid #dde; vertical-align: top; }
+    tr:nth-child(even) td { background: #f4f7fc; }
+    code { background: #eef; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; font-family: Consolas, monospace; }
+    .note { background: #fffbe6; border-left: 4px solid #f0b429; padding: 10px 16px; margin: 1em 0; border-radius: 3px; font-size: 0.93em; }
+    .discontinued { color: #999; text-decoration: line-through; }
+    ul { margin: 0.4em 0 0.8em 1.4em; }
+    li { margin-bottom: 4px; }
+    .tag { display: inline-block; background: #e0ecff; color: #1a3f6f; border-radius: 3px; font-size: 0.8em; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
+    .tag.stopped { background: #fde; color: #900; }
+  </style>
+</head>
+<body>
+
+<h1>mental_health_data — Package Overview</h1>
+
+<p>This package automates the collection and transformation of Oregon mental health system data into structured CSV files used as inputs to a <strong>Simio discrete-event simulation model</strong> of the Aid &amp; Assist (A&amp;A) forensic patient pipeline — from court order through Oregon State Hospital (OSH) admission, restoration, and discharge.</p>
+
+<hr>
+
+<h2>1. Data Sources &amp; Downloads</h2>
+<p>All downloads are handled in <code>build_model_data/download_data_updates.py</code>. The script checks what files already exist locally and only fetches what is new.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Source</th>
+      <th>Website</th>
+      <th>File Pattern</th>
+      <th>Cadence</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A&amp;A Census by County</strong></td>
+      <td>oregon.gov/oha/OSH/reports/</td>
+      <td><code>Aid-and-assist-census-by-county-YYYY-MM-DD.pdf</code></td>
+      <td>Weekly</td>
+      <td><span class="tag">Active</span></td>
+    </tr>
+    <tr>
+      <td><strong>Forensic Admission &amp; Discharge Dashboard</strong></td>
+      <td>oregon.gov/oha/OSH/reports/</td>
+      <td><code>YYYY-MM-OSH-Forensic-Admission-Discharge-Dashboard.pdf</code></td>
+      <td>Monthly</td>
+      <td><span class="tag">Active</span></td>
+    </tr>
+    <tr>
+      <td><strong>Multnomah Co. Court Docket</strong></td>
+      <td>mcda.us/Court_Appearance_List.pdf</td>
+      <td><code>YYYY-MM-DD-Court_Appearance_List.pdf</code> (saved locally)</td>
+      <td>M/T/W</td>
+      <td><span class="tag">Active</span></td>
+    </tr>
+    <tr>
+      <td><span class="discontinued">OSH Restoration Limit Report</span></td>
+      <td><span class="discontinued">oregon.gov/oha/OSH/reports/</span></td>
+      <td><span class="discontinued"><code>YYYY-MM-DD-OSH-Restoration-Limit-Report.pdf</code></span></td>
+      <td><span class="discontinued">Monthly</span></td>
+      <td><span class="tag stopped">Discontinued Jul 2025</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Census download method (updated Apr 2026):</strong> Rather than guessing file dates, the scraper now queries the <strong>OHA SharePoint REST API</strong>
+  (<code>oregon.gov/oha/OSH/_api/web/GetList('/oha/OSH/reports')/items?$filter=Report_x0020_type eq 'census'</code>)
+  to retrieve the exact list of published filenames, then downloads only what is missing locally. This is more reliable and avoids unnecessary HTTP requests.
+</div>
+
+<hr>
+
+<h2>2. PDF Parsing &amp; Aggregation</h2>
+<p>All processing is in <code>build_model_data/process_a_a_data.py</code>. Each function reads every PDF in its directory, extracts tables using <strong>tabula-py</strong> (requires Java), validates the data, and stacks it into a long-format CSV timeseries.</p>
+
+<h3>A. A&amp;A Census by County — <code>process_a_a_census_timeseries()</code></h3>
+<p>Reads weekly census PDFs. Each report is a single table showing, for every Oregon county:</p>
+<ul>
+  <li><strong>A&amp;A Census</strong> — total defendants on the Aid &amp; Assist waitlist</li>
+  <li><strong>.370 / .365 / .315 Census</strong> — counts by ORS statute type (felony severity)</li>
+  <li><strong>Fel. / Misd.</strong> — felony and misdemeanor counts and percentages</li>
+  <li><strong>None Listed</strong> — defendants with no charge type listed</li>
+  <li><strong>Change from Prev. Week</strong> — week-over-week delta</li>
+  <li><strong>% of State Pop. / Census vs. Pop. Dif.</strong> — population-adjusted metrics</li>
+</ul>
+<p>The table is validated (column totals must match the sum of county rows, within a rounding tolerance of ±1), then pivoted to long format with columns: <code>County, Date, Variable, Value</code>.</p>
+<p><strong>Output:</strong> <code>OSH AandA Census/osh_a_a_census_timeseries_through_YYYY-MM.csv</code></p>
+
+<h3>B. Forensic Admission &amp; Discharge Dashboard — <code>process_aa_admit_discharge_timeseries()</code></h3>
+<p>Reads monthly forensic dashboard PDFs. The relevant page is identified by scanning for text containing "Aid &amp; Assist", "Baker", and "Low High Count". Each report contains one wide table with 4 logical groups of columns, each broken out into a separate long-format timeseries:</p>
+<table>
+  <thead><tr><th>Output CSV</th><th>Columns captured</th><th>Aggregation check</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>osh_a_a_admission_list_through_YYYY-MM.csv</code></td>
+      <td>Admission list count, avg days waiting, low, high</td>
+      <td>Count = sum; Low = min; High = max across counties</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_patients_admitted_through_YYYY-MM.csv</code></td>
+      <td>Patients admitted count, avg days, low, high</td>
+      <td>Same</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_no_longer_needing_hloc_through_YYYY-MM.csv</code></td>
+      <td>Patients no longer needing higher level of care — 8 LOCUS-scored columns</td>
+      <td>Count = sum; avg/low/high validated</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_patients_discharged_through_YYYY-MM.csv</code></td>
+      <td>Patients discharged for community restoration — 8 LOCUS-scored columns</td>
+      <td>Same</td>
+    </tr>
+  </tbody>
+</table>
+<p>All outputs are long format: <code>County, Date, Variable, Value</code>.</p>
+
+<h3>C. Court Docket — <code>update_docket_data()</code></h3>
+<p>Downloads the current Multnomah County court appearance list PDF and saves it with today's date. No parsing or aggregation — the raw PDF is the deliverable.</p>
+
+<hr>
+
+<h2>3. Data Validation</h2>
+<p>Before saving, every parsed table is validated:</p>
+<ul>
+  <li><strong>Column totals:</strong> The "Total" row in each PDF must equal the sum of all county rows (±1 for rounding). If not, the script raises an <code>AssertionError</code>.</li>
+  <li><strong>Table structure:</strong> The exact set of expected columns is checked via <code>assert set(df.columns).issuperset({...})</code>. Missing columns raise immediately.</li>
+  <li><strong>Misaligned rows:</strong> tabula occasionally misaligns numeric values across columns due to whitespace in the PDF. The <code>fix_misaligned_table()</code> function uses combinatorial search (permutations) to find the correct column assignment that satisfies the known column totals.</li>
+</ul>
+
+<hr>
+
+<h2>4. Output Files Summary</h2>
+<table>
+  <thead><tr><th>File</th><th>Folder</th><th>Rows</th><th>Format</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>osh_a_a_census_timeseries_through_YYYY-MM.csv</code></td>
+      <td>OSH AandA Census/</td>
+      <td>One row per County × Date × Variable (weekly)</td>
+      <td>Long (County, Date, Variable, Value)</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_admission_list_through_YYYY-MM.csv</code></td>
+      <td>OSH AandA Admit Discharge/</td>
+      <td>One row per County × Date × Variable (monthly)</td>
+      <td>Long</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_patients_admitted_through_YYYY-MM.csv</code></td>
+      <td>OSH AandA Admit Discharge/</td>
+      <td>One row per County × Date × Variable (monthly)</td>
+      <td>Long</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_no_longer_needing_hloc_through_YYYY-MM.csv</code></td>
+      <td>OSH AandA Admit Discharge/</td>
+      <td>One row per County × Date × Variable (monthly)</td>
+      <td>Long</td>
+    </tr>
+    <tr>
+      <td><code>osh_a_a_patients_discharged_through_YYYY-MM.csv</code></td>
+      <td>OSH AandA Admit Discharge/</td>
+      <td>One row per County × Date × Variable (monthly)</td>
+      <td>Long</td>
+    </tr>
+    <tr>
+      <td><code>YYYY-MM-DD-Court_Appearance_List.pdf</code></td>
+      <td>Court_Appearance_Documents/</td>
+      <td>Raw PDF only</td>
+      <td>PDF</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>5. Automation</h2>
+<p><code>build_model_data/update_data.bat</code> is a Windows batch file that runs the full pipeline on a schedule (configured externally). It runs <code>process_a_a_data.py</code> as <code>__main__</code>, which sequentially calls all three active processing functions.</p>
+
+<hr>
+<p style="color:#888; font-size:0.85em;">Generated April 2026 &mdash; v11stats/mental_health_data</p>
+</body>
+</html>
