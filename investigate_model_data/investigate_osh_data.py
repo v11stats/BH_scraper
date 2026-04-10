@@ -10,7 +10,7 @@ import seaborn as sns
 
 # Add the parent directory to the Python path to import from build_model_data
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from build_model_data.download_data_updates import update_restoration_limit_data
+# from build_model_data.download_data_updates import update_restoration_limit_data
 
 
 def find_global_stabilization_point(
@@ -89,7 +89,7 @@ def find_osh_discharge_proportions(
     """
 
     if update_data:
-        update_restoration_limit_data(directory)
+        # update_restoration_limit_data(directory)
 
     # There may be multiple csvs, so we will use the most recent one
     files = [

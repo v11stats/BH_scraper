@@ -16,7 +16,7 @@ from build_model_data.download_data_updates import (
     update_aid_and_assist_data,
     update_census_data,
     update_docket_data,
-    update_restoration_limit_data,
+    # update_restoration_limit_data,
 )
 
 pd.set_option("future.no_silent_downcasting", True)
@@ -854,12 +854,12 @@ if __name__ == "__main__":
             os.path.dirname(os.path.realpath(__file__)), "../../OSH AandA Census"
         )
     )
-    process_restoration_limit_data(
-        directory=os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "../../OSH_Restoration_Limit_data",
-        )
-    )
+    # process_restoration_limit_data(
+    #     directory=os.path.join(
+    #         os.path.dirname(os.path.realpath(__file__)),
+    #         "../../OSH_Restoration_Limit_data",
+    #     )
+    # )
     update_docket_data(
         directory=os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
