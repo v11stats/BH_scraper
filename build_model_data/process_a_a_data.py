@@ -88,6 +88,20 @@ def setup_java_environment():
         return None
 
 
+def _find_latest_csv(directory, prefix):
+    """Return the path and max date of the most recent CSV matching a prefix, or (None, None)."""
+    best_path, best_date = None, None
+    for f in os.listdir(directory):
+        if f.startswith(prefix) and f.endswith(".csv"):
+            path = os.path.join(directory, f)
+            df = pd.read_csv(path, usecols=["Date"], parse_dates=["Date"])
+            max_date = df["Date"].max()
+            if best_date is None or max_date > best_date:
+                best_date = max_date
+                best_path = path
+    return best_path, best_date
+
+
 def process_aa_admit_discharge_timeseries(directory, starting_date=None):
     """Process Aid & Assist timeseries data from PDF files.
 
@@ -104,13 +118,24 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
     # Check for new data
     update_aid_and_assist_data(directory, starting_date=starting_date)
 
-    # set up 4 dataframes to append data from each file
-    admission_list_df = pd.DataFrame()
-    patients_admitted_df = pd.DataFrame()
-    no_longer_needing_hloc_df = pd.DataFrame()
-    patients_discharged_df = pd.DataFrame()
+    # Load existing CSVs if present, to avoid reprocessing old PDFs
+    al_path, al_max = _find_latest_csv(directory, "osh_a_a_admission_list_")
+    admission_list_df = pd.read_csv(al_path, parse_dates=["Date"]) if al_path else pd.DataFrame()
+    pa_path, pa_max = _find_latest_csv(directory, "osh_a_a_patients_admitted_")
+    patients_admitted_df = pd.read_csv(pa_path, parse_dates=["Date"]) if pa_path else pd.DataFrame()
+    hl_path, hl_max = _find_latest_csv(directory, "osh_a_a_no_longer_needing_hloc_")
+    no_longer_needing_hloc_df = pd.read_csv(hl_path, parse_dates=["Date"]) if hl_path else pd.DataFrame()
+    pd_path, pd_max = _find_latest_csv(directory, "osh_a_a_patients_discharged_")
+    patients_discharged_df = pd.read_csv(pd_path, parse_dates=["Date"]) if pd_path else pd.DataFrame()
+
+    # The cutoff is the latest date already in all four CSVs (they should be in sync)
+    existing_cutoff = max(d for d in [al_max, pa_max, hl_max, pd_max] if d is not None) if any(
+        d is not None for d in [al_max, pa_max, hl_max, pd_max]
+    ) else None
+    if existing_cutoff is not None:
+        print(f"Skipping PDFs on or before {existing_cutoff.strftime('%Y-%m')} (already processed)")
     # Iterate through all PDF files in the directory
-    for file_ in tqdm(os.listdir(directory)):
+    for file_ in tqdm(sorted(os.listdir(directory))):
         if file_.endswith(".pdf"):
             # Extract full date in format YYYY-MM or YYYY.MM
             date_match = re.search(r"\d{4}[-\.]\d{2}", file_)
@@ -118,6 +143,10 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
             if date_match is None:
                 raise ValueError(f"Date not found in filename {file_}.")
             date_match = pd.to_datetime(date_match)
+
+            # Skip PDFs already captured in existing CSVs
+            if existing_cutoff is not None and date_match <= existing_cutoff:
+                continue
 
             # Identify the page with the aid and assist data
             try:
@@ -293,7 +322,11 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
                 ignore_index=True,
             )
 
-    # Save each dataframe to a CSV file
+    # Save each dataframe to a CSV file, removing the old dated file first
+    for old_path in [al_path, pa_path, hl_path, pd_path]:
+        if old_path and os.path.exists(old_path):
+            os.remove(old_path)
+
     admission_list_df.to_csv(
         os.path.join(
             directory,
@@ -365,9 +398,14 @@ def process_a_a_census_timeseries(directory: str):
     # Set up Java environment before using tabula
     setup_java_environment()
 
-    census_df = pd.DataFrame()
+    # Load existing CSV if present to avoid reprocessing old PDFs
+    census_path, census_max = _find_latest_csv(directory, "osh_a_a_census_timeseries_")
+    census_df = pd.read_csv(census_path, parse_dates=["Date"]) if census_path else pd.DataFrame()
+    if census_max is not None:
+        print(f"Skipping census PDFs on or before {census_max.strftime('%Y-%m-%d')} (already processed)")
+
     # Iterate through all PDF files in the directory
-    for file_ in tqdm(os.listdir(directory)):
+    for file_ in tqdm(sorted(os.listdir(directory))):
         if file_.endswith(".pdf"):
             more_than_one_page = False
             # Extract full date in format YYYY-MM-DD
@@ -376,6 +414,10 @@ def process_a_a_census_timeseries(directory: str):
             if date_match is None:
                 raise ValueError(f"Date not found in filename {file_}.")
             date_match = pd.to_datetime(date_match)
+
+            # Skip PDFs already captured in existing CSV
+            if census_max is not None and date_match <= census_max:
+                continue
 
             # Check if the table is multi-page
             try:
@@ -518,7 +560,9 @@ def process_a_a_census_timeseries(directory: str):
 
             census_df = pd.concat([census_df, df], ignore_index=True)
 
-    # Save the combined census dataframe to a CSV file
+    # Save the combined census dataframe to a CSV file, removing the old dated file first
+    if census_path and os.path.exists(census_path):
+        os.remove(census_path)
     census_df.to_csv(
         os.path.join(
             directory,
