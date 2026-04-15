@@ -1,3 +1,4 @@
+import argparse
 import os
 import re
 import subprocess
@@ -844,27 +845,24 @@ def fix_misaligned_table(df):
 
 
 if __name__ == "__main__":
+    default_base = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../..")
+
+    parser = argparse.ArgumentParser(description="Run the A&A data pipeline.")
+    parser.add_argument("--admit-discharge-dir", default=os.path.join(default_base, "OSH AandA Admit Discharge"))
+    parser.add_argument("--census-dir", default=os.path.join(default_base, "OSH AandA Census"))
+    parser.add_argument("--docket-dir", default=os.path.join(default_base, "Court_Appearance_Documents"))
+    args = parser.parse_args()
+
     process_aa_admit_discharge_timeseries(
-        directory=os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "../../OSH AandA Admit Discharge",
-        ),
+        directory=args.admit_discharge_dir,
         starting_date="2022-01",
     )
     process_a_a_census_timeseries(
-        directory=os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "../../OSH AandA Census"
-        )
+        directory=args.census_dir,
     )
     # process_restoration_limit_data(
-    #     directory=os.path.join(
-    #         os.path.dirname(os.path.realpath(__file__)),
-    #         "../../OSH_Restoration_Limit_data",
-    #     )
+    #     directory=os.path.join(default_base, "OSH_Restoration_Limit_data"),
     # )
     update_docket_data(
-        directory=os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "../../Court_Appearance_Documents",
-        )
+        directory=args.docket_dir,
     )
