@@ -8,6 +8,13 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 DATA_DIR="/home/sambauser/shared_folder/bh_modeling"
 LOG_FILE="$SCRIPT_DIR/update_data_log.txt"
 
+# Ensure local pip binaries are on PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Set JAVA_HOME for tabula-py
+export JAVA_HOME="$(dirname $(dirname $(readlink -f $(which java))))"
+export PATH="$JAVA_HOME/bin:$PATH"
+
 echo "=== Run started: $(date) ===" >> "$LOG_FILE"
 
 python3 "$SCRIPT_DIR/process_a_a_data.py" \
