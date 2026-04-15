@@ -84,52 +84,69 @@
 <hr>
 
 <h2>2. PDF Parsing &amp; Aggregation</h2>
-<p>All processing is in <code>build_model_data/process_a_a_data.py</code>. Each function reads every PDF in its directory, extracts tables using <strong>tabula-py</strong> (requires Java), validates the data, and stacks it into a long-format CSV timeseries.</p>
+<p>All processing is in <code>build_model_data/process_a_a_data.py</code>. Each function extracts tables using <strong>tabula-py</strong> (requires Java), validates the data, and stacks it into a long-format CSV timeseries.</p>
+<p>On each run, both functions check for an existing CSV in the output directory. If one is found, they load it, identify the latest date already processed, and <strong>skip all PDFs on or before that date</strong> — only new PDFs are parsed and appended. The old dated CSV is replaced with a new one reflecting the updated date range.</p>
 
 <h3>A. A&amp;A Census by County — <code>process_a_a_census_timeseries()</code></h3>
-<p>Reads weekly census PDFs. Each report is a single table showing, for every Oregon county:</p>
-<ul>
-  <li><strong>A&amp;A Census</strong> — total defendants on the Aid &amp; Assist waitlist</li>
-  <li><strong>.370 / .365 / .315 Census</strong> — counts by ORS statute type (felony severity)</li>
-  <li><strong>Fel. / Misd.</strong> — felony and misdemeanor counts and percentages</li>
-  <li><strong>None Listed</strong> — defendants with no charge type listed</li>
-  <li><strong>Change from Prev. Week</strong> — week-over-week delta</li>
-  <li><strong>% of State Pop. / Census vs. Pop. Dif.</strong> — population-adjusted metrics</li>
-</ul>
-<p>The table is validated (column totals must match the sum of county rows, within a rounding tolerance of ±1), then pivoted to long format with columns: <code>County, Date, Variable, Value</code>.</p>
-<p><strong>Output:</strong> <code>OSH AandA Census/osh_a_a_census_timeseries_through_YYYY-MM.csv</code></p>
+<p>Reads <strong>182 weekly</strong> census PDFs (Sep 2022 – Apr 2026), covering <strong>37 Oregon counties</strong>. Each report is a single table parsed with tabula-py and pivoted to long format.</p>
+<p><strong>Output:</strong> <code>OSH AandA Census/osh_a_a_census_timeseries_through_YYYY-MM.csv</code> — <strong>87,542 rows</strong>, columns: <code>County, Date, Variable, Value</code></p>
+<p>The <code>Variable</code> column contains 13 measures per county per week:</p>
+<table>
+  <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>A&amp;A Census</code></td><td>Total defendants currently on the Aid &amp; Assist waitlist in that county</td></tr>
+    <tr><td><code>.370 Census</code></td><td>Defendants charged under ORS 161.370 (felony — competency evaluation ordered)</td></tr>
+    <tr><td><code>.365 Census</code></td><td>Defendants charged under ORS 161.365 (misdemeanor competency)</td></tr>
+    <tr><td><code>.315 Census</code></td><td>Defendants charged under ORS 161.315 (fitness to proceed)</td></tr>
+    <tr><td><code>Fel.</code></td><td>Count of felony defendants on waitlist</td></tr>
+    <tr><td><code>% Fel.</code></td><td>Felonies as a percentage of total census</td></tr>
+    <tr><td><code>Misd.</code></td><td>Count of misdemeanor defendants on waitlist</td></tr>
+    <tr><td><code>% Misd.</code></td><td>Misdemeanors as a percentage of total census</td></tr>
+    <tr><td><code>None Listed</code></td><td>Defendants with no charge type recorded</td></tr>
+    <tr><td><code>Change from Prev. Week</code></td><td>Week-over-week change in total census (can be negative)</td></tr>
+    <tr><td><code>% of Census</code></td><td>County's share of the statewide A&amp;A census</td></tr>
+    <tr><td><code>% of State Pop.</code></td><td>County's share of Oregon's total population</td></tr>
+    <tr><td><code>Census vs. Pop. Dif.</code></td><td>Difference between % of census and % of state population (over/under-representation)</td></tr>
+  </tbody>
+</table>
 
 <h3>B. Forensic Admission &amp; Discharge Dashboard — <code>process_aa_admit_discharge_timeseries()</code></h3>
-<p>Reads monthly forensic dashboard PDFs. The relevant page is identified by scanning for text containing "Aid &amp; Assist", "Baker", and "Low High Count". Each report contains one wide table with 4 logical groups of columns, each broken out into a separate long-format timeseries:</p>
+<p>Reads <strong>36 monthly</strong> forensic dashboard PDFs (Apr 2023 – Mar 2026), covering <strong>41 Oregon counties</strong>. The relevant page is identified by scanning PDF text for "Aid &amp; Assist", "Baker", and "Low High Count". The wide table is split into 4 logical groups, each saved as a separate long-format CSV.</p>
+<p>All four files share the same schema: <code>County, Date, Variable, Value</code>.</p>
+
 <table>
-  <thead><tr><th>Output CSV</th><th>Columns captured</th><th>Aggregation check</th></tr></thead>
+  <thead><tr><th>Output CSV</th><th>Rows</th><th>Variables</th><th>Description</th></tr></thead>
   <tbody>
     <tr>
       <td><code>osh_a_a_admission_list_through_YYYY-MM.csv</code></td>
-      <td>Admission list count, avg days waiting, low, high</td>
-      <td>Count = sum; Low = min; High = max across counties</td>
+      <td>5,328</td>
+      <td><code>Count, Avg Days, Low, High</code></td>
+      <td>Defendants currently on the OSH admission waitlist by county. <em>Count</em> = number waiting; <em>Avg Days</em> = average wait time; <em>Low/High</em> = min/max individual wait times that month.</td>
     </tr>
     <tr>
       <td><code>osh_a_a_patients_admitted_through_YYYY-MM.csv</code></td>
-      <td>Patients admitted count, avg days, low, high</td>
-      <td>Same</td>
+      <td>5,328</td>
+      <td><code>Count, Avg Days, Low, High</code></td>
+      <td>Defendants admitted to OSH that month by county. Same four variables as admission list — count of admissions, average days from order to admission, shortest and longest waits.</td>
     </tr>
     <tr>
       <td><code>osh_a_a_no_longer_needing_hloc_through_YYYY-MM.csv</code></td>
-      <td>Patients no longer needing higher level of care — 8 LOCUS-scored columns</td>
-      <td>Count = sum; avg/low/high validated</td>
+      <td>10,656</td>
+      <td><code>Count, Avg Days, LOCUS_1 – LOCUS_6</code></td>
+      <td>Defendants who were removed from the OSH waitlist because they no longer required a higher level of care (HLOC). LOCUS scores (1–6) indicate clinical acuity at the time of removal, where higher scores reflect greater impairment.</td>
     </tr>
     <tr>
       <td><code>osh_a_a_patients_discharged_through_YYYY-MM.csv</code></td>
-      <td>Patients discharged for community restoration — 8 LOCUS-scored columns</td>
-      <td>Same</td>
+      <td>10,656</td>
+      <td><code>Count, Avg Days, LOCUS_1 – LOCUS_6</code></td>
+      <td>Defendants discharged from OSH for community restoration that month. LOCUS scores (1–6) reflect clinical acuity at discharge. <em>Avg Days</em> = average length of OSH stay.</td>
     </tr>
   </tbody>
 </table>
-<p>All outputs are long format: <code>County, Date, Variable, Value</code>.</p>
+<p><strong>Validation:</strong> Count columns are verified to sum correctly across counties; Low = county minimum, High = county maximum in the statewide total row.</p>
 
 <h3>C. Court Docket — <code>update_docket_data()</code></h3>
-<p>Downloads the current Multnomah County court appearance list PDF and saves it with today's date. No parsing or aggregation — the raw PDF is the deliverable.</p>
+<p>Downloads the current Multnomah County court appearance list PDF from <code>mcda.us</code> and saves it with today's date. No parsing or aggregation — the raw PDF is the deliverable, used to track upcoming A&amp;A court dates.</p>
 
 <hr>
 
@@ -145,43 +162,49 @@
 
 <h2>4. Output Files Summary</h2>
 <table>
-  <thead><tr><th>File</th><th>Folder</th><th>Rows</th><th>Format</th></tr></thead>
+  <thead><tr><th>File</th><th>Folder</th><th>Rows</th><th>Date Range</th><th>Counties</th></tr></thead>
   <tbody>
     <tr>
       <td><code>osh_a_a_census_timeseries_through_YYYY-MM.csv</code></td>
       <td>OSH AandA Census/</td>
-      <td>One row per County × Date × Variable (weekly)</td>
-      <td>Long (County, Date, Variable, Value)</td>
+      <td>87,542</td>
+      <td>Sep 2022 – Apr 2026 (weekly)</td>
+      <td>37</td>
     </tr>
     <tr>
       <td><code>osh_a_a_admission_list_through_YYYY-MM.csv</code></td>
       <td>OSH AandA Admit Discharge/</td>
-      <td>One row per County × Date × Variable (monthly)</td>
-      <td>Long</td>
+      <td>5,328</td>
+      <td>Apr 2023 – Mar 2026 (monthly)</td>
+      <td>41</td>
     </tr>
     <tr>
       <td><code>osh_a_a_patients_admitted_through_YYYY-MM.csv</code></td>
       <td>OSH AandA Admit Discharge/</td>
-      <td>One row per County × Date × Variable (monthly)</td>
-      <td>Long</td>
+      <td>5,328</td>
+      <td>Apr 2023 – Mar 2026 (monthly)</td>
+      <td>41</td>
     </tr>
     <tr>
       <td><code>osh_a_a_no_longer_needing_hloc_through_YYYY-MM.csv</code></td>
       <td>OSH AandA Admit Discharge/</td>
-      <td>One row per County × Date × Variable (monthly)</td>
-      <td>Long</td>
+      <td>10,656</td>
+      <td>Apr 2023 – Mar 2026 (monthly)</td>
+      <td>41</td>
     </tr>
     <tr>
       <td><code>osh_a_a_patients_discharged_through_YYYY-MM.csv</code></td>
       <td>OSH AandA Admit Discharge/</td>
-      <td>One row per County × Date × Variable (monthly)</td>
-      <td>Long</td>
+      <td>10,656</td>
+      <td>Apr 2023 – Mar 2026 (monthly)</td>
+      <td>41</td>
     </tr>
     <tr>
       <td><code>YYYY-MM-DD-Court_Appearance_List.pdf</code></td>
       <td>Court_Appearance_Documents/</td>
-      <td>Raw PDF only</td>
-      <td>PDF</td>
+      <td>Raw PDF</td>
+      <td>Current date</td>
+      <td>Multnomah Co.</td>
     </tr>
   </tbody>
 </table>
@@ -189,9 +212,37 @@
 <hr>
 
 <h2>5. Automation</h2>
-<p><code>build_model_data/update_data.bat</code> is a Windows batch file that runs the full pipeline on a schedule (configured externally). It runs <code>process_a_a_data.py</code> as <code>__main__</code>, which sequentially calls all three active processing functions.</p>
+<p>The pipeline is deployed on an <strong>Ubuntu 22.04 LTS server (nash2)</strong> and scheduled via cron. Output CSVs are written to a <strong>Samba share</strong> accessible from other machines on the network.</p>
+
+<table>
+  <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>build_model_data/update_data.sh</code></td>
+      <td>Linux shell script — sets JAVA_HOME and PATH, then runs <code>process_a_a_data.py</code> with the Samba share paths as arguments. Logs to <code>update_data_log.txt</code>.</td>
+    </tr>
+    <tr>
+      <td><code>build_model_data/update_data.bat</code></td>
+      <td>Legacy Windows batch file — retained for reference only.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Cron schedule</h3>
+<p>Runs Monday, Tuesday, Wednesday at <strong>6:00 PM PDT</strong> (1:00 AM UTC, summer). Adjust to <code>0 2</code> in winter for PST.</p>
+<pre style="background:#f4f7fc; padding:10px; border-radius:4px; font-size:0.9em;">0 1 * * 2,3,4 /home/miki/BH_scraper/build_model_data/update_data.sh</pre>
+
+<h3>Output paths on server</h3>
+<table>
+  <thead><tr><th>Data</th><th>Path on nash2</th></tr></thead>
+  <tbody>
+    <tr><td>A&amp;A Census CSVs + PDFs</td><td><code>/home/sambauser/shared_folder/bh_modeling/OSH AandA Census/</code></td></tr>
+    <tr><td>Admit/Discharge CSVs + PDFs</td><td><code>/home/sambauser/shared_folder/bh_modeling/OSH AandA Admit Discharge/</code></td></tr>
+    <tr><td>Court Docket PDFs</td><td><code>/home/sambauser/shared_folder/bh_modeling/Court_Appearance_Documents/</code></td></tr>
+  </tbody>
+</table>
 
 <hr>
-<p style="color:#888; font-size:0.85em;">Generated April 2026 &mdash; v11stats/mental_health_data</p>
+<p style="color:#888; font-size:0.85em;">Updated April 2026 &mdash; v11stats/BH_scraper</p>
 </body>
 </html>
