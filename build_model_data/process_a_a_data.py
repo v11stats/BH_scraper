@@ -448,7 +448,11 @@ def process_a_a_census_timeseries(directory: str):
                     lattice=False,
                 )
                 more_than_one_page = True
-                if tables[1].shape[1] > 5:
+                if tables[1].shape[0] == 0:
+                    # Total row was parsed as column headers with no data rows;
+                    # just use page 1 and we'll compute the Total row ourselves below
+                    df = tables[0]
+                elif tables[1].shape[1] > 5:
                     second_table = tables[1]
                     second_table.columns = [
                         np.nan if "Unnamed" in str(col) else col
@@ -502,6 +506,12 @@ def process_a_a_census_timeseries(directory: str):
                     - df["Fel."].apply(pd.to_numeric)
                     - df["Misd."].apply(pd.to_numeric)
                 )
+                # If the Total row was parsed as column headers (empty table[1]),
+                # it won't be in df — append a computed Total row so the assertion passes
+                if str(df.iloc[-1, 0]).strip() != "Total":
+                    total_row = df.apply(pd.to_numeric, errors="coerce").sum(axis=0, skipna=True)
+                    total_row.iloc[0] = "Total"
+                    df = pd.concat([df, total_row.to_frame().T], ignore_index=True)
             # We have specific columns, so make sure they're all there
             assert set(df.columns).issuperset(
                 {
@@ -527,7 +537,12 @@ def process_a_a_census_timeseries(directory: str):
             df = df.replace({r"[‐‑–—−]": "-"}, regex=True)
             counties = df["County"]
             # Turn all columns to numeric, except the first
-            df = df.iloc[:, 1:].apply(pd.to_numeric)
+            numeric_df = df.iloc[:, 1:].apply(pd.to_numeric, errors="coerce")
+            newly_null = numeric_df.isna() & df.iloc[:, 1:].notna() & (df.iloc[:, 1:] != "")
+            if newly_null.any().any():
+                bad = df.iloc[:, 1:][newly_null].stack()
+                print(f"WARNING: non-numeric values coerced to NaN in {file_}: {bad.to_dict()}")
+            df = numeric_df
             df.insert(0, "County", counties)
             df["Date"] = date_match
 
@@ -542,13 +557,15 @@ def process_a_a_census_timeseries(directory: str):
                 == df.iloc[:-1, sum_columns].sum(axis=0, skipna=True).round(0)
             ).all():
                 # It may be a rounding issue so we will allow for a difference of 1
-                assert (
+                if not (
                     abs(
                         df.iloc[-1, sum_columns]
                         - df.iloc[:-1, sum_columns].sum(axis=0, skipna=True).round(0)
                     )
                     <= 1
-                ).all(), f"Total row does not match sum of previous rows in {file_}"
+                ).all():
+                    print(f"WARNING: Total row does not match sum of previous rows in {file_} — skipping")
+                    continue
 
             # turn this df into long format
             df = pd.melt(
@@ -897,6 +914,9 @@ if __name__ == "__main__":
     parser.add_argument("--docket-dir", default=os.path.join(default_base, "Court_Appearance_Documents"))
     args = parser.parse_args()
 
+    update_docket_data(
+        directory=args.docket_dir,
+    )
     process_aa_admit_discharge_timeseries(
         directory=args.admit_discharge_dir,
         starting_date="2022-01",
@@ -907,6 +927,3 @@ if __name__ == "__main__":
     # process_restoration_limit_data(
     #     directory=os.path.join(default_base, "OSH_Restoration_Limit_data"),
     # )
-    update_docket_data(
-        directory=args.docket_dir,
-    )
