@@ -1,6 +1,6 @@
 #!/bin/bash
 # update_data.sh
-# Runs the full data pipeline on Mon, Tue, Wed at 6pm Pacific time.
+# Runs the full data pipeline daily at 6pm Pacific time.
 # Scheduled via cron — see cron entry at bottom of this file.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +41,6 @@ echo "=== Run finished: $(date) ==="
 # To install the cron job, run:
 #   crontab -e
 # Then add this line (6pm Pacific = UTC-7 in summer, UTC-8 in winter):
-#   0 1 * * 2,3,4 /home/miki/git/mental_health_data/build_model_data/update_data.sh
+#   0 1 * * * /home/miki/git/mental_health_data/build_model_data/update_data.sh
 # (1am UTC = 6pm PDT; adjust to 2am UTC in winter for PST)
 # -------------------------------------------------------
