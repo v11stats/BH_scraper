@@ -1,10 +1,40 @@
 import os
 import re
+import smtplib
 from datetime import date
+from email.mime.text import MIMEText
 from time import sleep
 
 import pandas as pd
 import requests
+
+
+def _send_email_alert(subject, body):
+    """Send a Gmail alert using credentials from environment variables.
+
+    Set ALERT_EMAIL_USER and ALERT_EMAIL_APP_PASSWORD in the environment
+    (e.g. via a .env file sourced in update_data.sh).
+    """
+    sender = os.environ.get("ALERT_EMAIL_USER")
+    password = os.environ.get("ALERT_EMAIL_APP_PASSWORD")
+    recipient = os.environ.get("ALERT_EMAIL_RECIPIENT", sender)
+
+    if not sender or not password:
+        print("WARNING: Email alert not sent — ALERT_EMAIL_USER or ALERT_EMAIL_APP_PASSWORD not set.")
+        return
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = recipient
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(sender, password)
+            smtp.sendmail(sender, recipient, msg.as_string())
+        print(f"Alert email sent to {recipient}.")
+    except Exception as e:
+        print(f"WARNING: Failed to send alert email: {e}")
 
 
 def update_aid_and_assist_data(directory, starting_date=None):
@@ -161,3 +191,11 @@ def update_docket_data(directory):
             print("Successfully downloaded:", url)
         except requests.RequestException as e:
             print(f"{e}")
+            _send_email_alert(
+                subject="BH Scraper: Court Appearance List download FAILED",
+                body=(
+                    f"update_docket_data() failed on {current_date.strftime('%Y-%m-%d')}.\n\n"
+                    f"Error: {e}\n\n"
+                    f"URL: {url}"
+                ),
+            )

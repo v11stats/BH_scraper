@@ -171,9 +171,11 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
                 stream=True,
                 lattice=True,
             )
-            assert len(tables) == 1, (
-                f"Expected 1 table, found {len(tables)} in {file_} on page {j}"
-            )
+            if len(tables) != 1:
+                print(
+                    f"WARNING: Expected 1 table, found {len(tables)} in {file_} on page {j} — skipping"
+                )
+                continue
             df = tables[0]
 
             # This data has a specific format. There are 4 main groups of columns:
@@ -186,9 +188,9 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
             # The first column is also the county information, with its title in the 2nd level.
 
             # Check if the second row contains 'Admission List'
-            assert any("Avg Days" in str(s) for s in df.iloc[1, :].tolist()), (
-                "This is not the correct column"
-            )
+            if not any("Avg Days" in str(s) for s in df.iloc[1, :].tolist()):
+                print(f"WARNING: This is not the correct column in {file_} — skipping")
+                continue
             df.columns = df.iloc[1, :].to_list()  # Use the second row as column names
             if not pd.notna(df.columns.tolist()[0]):
                 df = df.rename(columns={df.columns.tolist()[0]: "County"})
@@ -218,13 +220,17 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
             check_columns = [2, 6] + list(range(10, 17)) + list(range(18, 25))
             count_columns = [i - 1 for i in check_columns]  # Adjust for zero-indexing
             # Check if the last row is the sum of the previous for these columns
-            assert (
+            if not (
                 df.iloc[-1, count_columns]
                 .fillna(0)
                 .infer_objects(copy=False)
                 .astype(int)
                 == df.iloc[:-1, count_columns].sum(axis=0, skipna=True)
-            ).all(), "Total row does not match sum of previous rows"
+            ).all():
+                print(
+                    f"WARNING: Total row does not match sum of previous rows in {file_} — skipping"
+                )
+                continue
 
             # 2) Avg columns:
             # only include columns 3, 7, 17, 25
@@ -244,23 +250,31 @@ def process_aa_admit_discharge_timeseries(directory, starting_date=None):
             # Take the minimum of the previous rows for these columns.
             low_columns = [4, 8]
             low_columns = [i - 1 for i in low_columns]  # Adjust for zero-indexing
-            assert (
+            if not (
                 df.iloc[-1, low_columns].fillna(0).infer_objects(copy=False).astype(int)
                 == df.iloc[:-1, low_columns].min(axis=0, skipna=True)
-            ).all(), "Low row does not match minimum of previous rows"
+            ).all():
+                print(
+                    f"WARNING: Low row does not match minimum of previous rows in {file_} — skipping"
+                )
+                continue
 
             # 4) High:
             # Only include columns 5, 9
             high_columns = [5, 9]
             high_columns = [i - 1 for i in high_columns]  # Adjust for zero-indexing
             # Check if the last row is the maximum of the previous for these columns
-            assert (
+            if not (
                 df.iloc[-1, high_columns]
                 .fillna(0)
                 .infer_objects(copy=False)
                 .astype(int)
                 == df.iloc[:-1, high_columns].max(axis=0, skipna=True)
-            ).all(), "High row does not match maximum of previous rows"
+            ).all():
+                print(
+                    f"WARNING: High row does not match maximum of previous rows in {file_} — skipping"
+                )
+                continue
 
             # Build a new dataset with each of these groups as separate dataframes
             admission_list_df_temp = df.iloc[:, 1:5]
